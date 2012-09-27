@@ -73,7 +73,7 @@ var Jaz = (function(globals){
          return {
             assert: Logger("Assert Log Reports:"),
             expect: Logger("Expectations Log Reports:"),
-            suit: Logger("Suite Log Reports:"),
+            suite: Logger("Suite Log Reports:"),
             report: function(){
                this.assert.print();
                this.expect.print();
@@ -177,7 +177,7 @@ var Jaz = (function(globals){
          
          var SuiteManager = {
                showDebug: false,
-               logger : Logger("Spec Reports:"),
+               logger : LoggerManager.suite,
                specs : {},
                before : null,
                after : null,
