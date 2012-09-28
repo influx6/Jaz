@@ -38,9 +38,8 @@ var Jaz = (function(globals){
             console.log(asc.fg.red,message,asc.reset);
          }
       },
-      Logger = (function(title){
-         var title = title;
-         var logs = [];
+      Logger = (function(title,debug){
+         var title = title, debug = debug,logs = [];
 
          return {
 
@@ -55,12 +54,13 @@ var Jaz = (function(globals){
 
             print: function(){
                var count = 0;
-               if(title) TerminalConsole.display(title);
+               if(title && debug) TerminalConsole.display(title);
                var iterator = _su.iterable(logs,function(e,i,b){
                   TerminalConsole.display(_su.makeString("\n",e));
                   count += 1;
                },function(e,i,b){
-                  TerminalConsole.display("");
+                  if(!debug) return;
+                  //TerminalConsole.display("");
                   TerminalConsole.display(_su.makeString("",cres("Total Log Count:",asc.fg.cyan,asc.reset),count));
                });
 
@@ -75,9 +75,9 @@ var Jaz = (function(globals){
             expect: Logger("Expectations Log Reports:"),
             suite: Logger("Suite Log Reports:"),
             report: function(){
+               this.suite.print();
                this.assert.print();
                this.expect.print();
-               this.suite.print();
             }
          }
       })(),
@@ -85,10 +85,7 @@ var Jaz = (function(globals){
          this.description = "Expects";
          if(!_scope) _scope = this;
 
-         var plus = _su.makeString("",asc.fg.yellow,"÷",asc.reset),
-             negative = _su.makeString("",asc.fg.yellow,"-",asc.reset),
-             wrapToString = function(code){ return ("'"+code+"'"); },
-             assertError = new Error("Assertion Error!"),
+         var wrapToString = function(code){ return ("'"+code+"'"); },
              generateResponse = function(op,could,should,message,scope){
 
                if(_su.isString(could)) could = wrapToString(could);
@@ -100,18 +97,26 @@ var Jaz = (function(globals){
                if(_su.isUndefined(could)) could = 'Undefined';
                if(_su.isUndefined(should)) should = 'Undefined';
 
-               var passed = _su.makeString(" ",asc.fg.red," - Assertion:",cres(op,asc.fg.cyan,asc.reset),"Status:",Passed,
-                  "from:",cres(scope,asc.fg.yellow,asc.reset)),
-                   failed = _su.makeString(" ",asc.fg.red," - Assertion:",cres(op,asc.fg.cyan,asc.reset),"Status:",Failed,
-                  "from:",cres(scope,asc.fg.yellow,asc.reset)),
-                   body = _su.makeString(" ","   ",asc.fg.green," + Checked:",_su.makeString(" ","if",could,message,should),asc.fg.red,asc.reset);
+               var passed = _su.makeString(" ",asc.fg.margenta," - Assertion:",cres(op,asc.fg.cyan,asc.reset),
+                     asc.fg.margenta,"Status:",Passed, asc.fg.margenta,"From:",cres(scope,asc.fg.cyan,asc.reset)),
+                   failed = _su.makeString(" ",asc.fg.margenta," - Assertion:",cres(op,asc.fg.cyan,asc.reset),
+                     asc.fg.margenta,"Status:",Failed,asc.fg.margenta,"From:",cres(scope,asc.fg.cyan,asc.reset)),
+                   body = _su.makeString(" ","   ",asc.fg.green," + Checked:",asc.reset,
+                     cres(_su.makeString(" ","if",could,message,should),asc.fg.cyan,asc.reset));
                   
                   return {
                      pass: _su.makeString("\n",passed,body),
                      fail: _su.makeString("\n",failed,body)
                   }
              },
-             Log = LoggerManager.assert;
+             Log = LoggerManager.assert,
+             AssertError = new Error("Assertion Error!"),
+             responseHandler = function(state,response){
+                  if(!state){ Log.log(response.fail); throw AssertError; return false; }
+                  Log.log(response.pass);
+                  return true;
+
+             };
 
          return {
          
@@ -119,22 +124,16 @@ var Jaz = (function(globals){
                var response = generateResponse("isEqual(===)",could,should,"is equal to",_scope.desc);
 
                if(_su.isType(could) !== _su.isType(should)){ 
-                  Log.log(response.fail);
-                  throw assertError;
-                  return;
+                  return responseHandler(false,response);
                }
                if(_su.isDate(could) && _su.isDate(should) && could.getTime() !== should.getTime()){ 
-                  Log.log(response.fail); 
-                  throw assertError;
-                  return;
+                  return responseHandler(false,response);
                }
                if(could !== should){ 
-                  Log.log(response.fail);
-                  throw assertError;
-                  return;
+                  return responseHandler(false,response);
                }
 
-               Log.log(response.pass); 
+               return responseHandler(true,response);
                  
             },
          
@@ -225,6 +224,7 @@ var Jaz = (function(globals){
                },
                run: function(){
                   //handle and run all the specs 
+
                   var self = this,
                       it = _su.iterable(this.specs,function(e,i,b){
                          //make a clean scope
@@ -235,17 +235,16 @@ var Jaz = (function(globals){
                            e.call(self.sandbox);
                            if(self.after) self.after();
                            self.passed += 1;
-                           self.logger.log(_su.makeString(" ","Spec:",e.desc,Passed));
                         }catch(j){
                            self.failed += 1;
-                           self.logger.log(" ");
-                           self.logger.log(_su.makeString(" ","- Spec:",e.desc,"Status",Failed));
-                           if(self.showDebug) self.logger.log(_su.makeString(" ","","SpecDebugTrace For:",e.desc,"\n",j));
                         }
                   },function(e,i,b){
-                        self.logger.log(_su.makeString(" ","TestSuite:",self.title));
-                        self.logger.log(_su.makeString(" ","Total Test:",self.total,"Failed Count:",self.failed,"Passed Count:",self.passed));
+                     self.logger.log(_su.makeString(" ",cres("Suite:",asc.fg.margenta,asc.reset),
+                        self.title,cres("Total:",asc.fg.margenta,asc.reset),
+                        self.total,cres("Passed:",asc.fg.margenta,asc.reset),self.passed,
+                        cres("Failed:",asc.fg.red,asc.reset),self.failed));
                         LoggerManager.report();
+                        self.logger.log(" ");
                   });
 
                   while(it.next());
