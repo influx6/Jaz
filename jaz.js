@@ -77,22 +77,34 @@ var Jaz = (function(globals){
             report: function(){
                this.assert.print();
                this.expect.print();
-               this.suit.print();
+               this.suite.print();
             }
          }
-      })();
+      })(),
       Asserts = (function(_scope){
          this.description = "Expects";
          if(!_scope) _scope = this;
 
          var plus = _su.makeString("",asc.fg.yellow,"÷",asc.reset),
              negative = _su.makeString("",asc.fg.yellow,"-",asc.reset),
+             wrapToString = function(code){ return ("'"+code+"'"); },
+             assertError = new Error("Assertion Error!"),
              generateResponse = function(op,could,should,message,scope){
-               var passed = _su.makeString(" ",asc.fg.magenta,negative," Assertion:",cres(op,asc.fg.cyan,asc.reset),"Status:",Passed,
+
+               if(_su.isString(could)) could = wrapToString(could);
+               if(_su.isString(should)) should = wrapToString(should);
+               if(_su.isDate(could)) could = could.getTime();
+               if(_su.isDate(should)) should = should.getTime();
+               if(_su.isNull(could)) could = 'Null';
+               if(_su.isNull(should)) should = 'Null';
+               if(_su.isUndefined(could)) could = 'Undefined';
+               if(_su.isUndefined(should)) should = 'Undefined';
+
+               var passed = _su.makeString(" ",asc.fg.red," - Assertion:",cres(op,asc.fg.cyan,asc.reset),"Status:",Passed,
                   "from:",cres(scope,asc.fg.yellow,asc.reset)),
-                   failed = _su.makeString(" ",asc.fg.magenta,negative," Assertion:",cres(op,asc.fg.cyan,asc.reset),"Status:",Failed,
+                   failed = _su.makeString(" ",asc.fg.red," - Assertion:",cres(op,asc.fg.cyan,asc.reset),"Status:",Failed,
                   "from:",cres(scope,asc.fg.yellow,asc.reset)),
-                   body = _su.makeString("","    ",plus," Checked:",_su.makeString(" ","if",could,message,should),asc.fg.red,asc.reset);
+                   body = _su.makeString(" ","   ",asc.fg.green," + Checked:",_su.makeString(" ","if",could,message,should),asc.fg.red,asc.reset);
                   
                   return {
                      pass: _su.makeString("\n",passed,body),
@@ -105,12 +117,25 @@ var Jaz = (function(globals){
          
             isEqual: function(could,should){
                var response = generateResponse("isEqual(===)",could,should,"is equal to",_scope.desc);
-               if(could !== should){
+
+               if(_su.isType(could) !== _su.isType(should)){ 
                   Log.log(response.fail);
-                  //throw new Error("Failed");
+                  throw assertError;
                   return;
                }
-                  Log.log(response.pass);
+               if(_su.isDate(could) && _su.isDate(should) && could.getTime() !== should.getTime()){ 
+                  Log.log(response.fail); 
+                  throw assertError;
+                  return;
+               }
+               if(could !== should){ 
+                  Log.log(response.fail);
+                  throw assertError;
+                  return;
+               }
+
+               Log.log(response.pass); 
+                 
             },
          
          }
@@ -184,6 +209,7 @@ var Jaz = (function(globals){
                total : 0,
                passed : 0,
                failed : 0,
+               sandbox: {},
                it : function(desc,fn){
                   //add the desc as a property of fn 
                   fn.desc = desc; Array.prototype.push.call(this.specs,fn);
@@ -191,30 +217,38 @@ var Jaz = (function(globals){
                },
                beforeEach : function(fn){
                    var self = this;
-                   this.before = function(){ return fn.call(self); };
+                   this.before = function(){ return fn.call(self.sandbox); };
                },
                afterEach : function(fn){
                   var self = this;
-                  this.after = function(){ return fn.call(self); };
+                  this.after = function(){ return fn.call(self.sandbox); };
                },
                run: function(){
                   //handle and run all the specs 
-                  var self = this,it = _su.iterable(this.specs,function(e,i,b){
-                     try{
-                        //using forceful approach we take on each it and run them 
-                        self.beforeEach.call(self);
-                        e.call(self);
-                        self.afterEach.call(self);
-                        self.passed += 1;
-                        self.logger.log(_su.makeString(" ","Spec:",e.desc,Passed));
-                     }catch(j){
-                        self.failed += 1;
-                        self.logger.log(_su.makeString(" ","Spec:",e.desc,Failed));
-                        if(self.showDebug) self.logger.log(_su.makeString(" ","SpecDebugTrace For:",e.desc,"\n",j));
-                     }
+                  var self = this,
+                      it = _su.iterable(this.specs,function(e,i,b){
+                         //make a clean scope
+                        try{
+                           //using forceful approach we take on each it and run them 
+                           if(self.before) self.before();
+                           self.sandbox.desc = e.desc;
+                           e.call(self.sandbox);
+                           if(self.after) self.after();
+                           self.passed += 1;
+                           self.logger.log(_su.makeString(" ","Spec:",e.desc,Passed));
+                        }catch(j){
+                           self.failed += 1;
+                           self.logger.log(" ");
+                           self.logger.log(_su.makeString(" ","- Spec:",e.desc,"Status",Failed));
+                           if(self.showDebug) self.logger.log(_su.makeString(" ","","SpecDebugTrace For:",e.desc,"\n",j));
+                        }
                   },function(e,i,b){
-                  
+                        self.logger.log(_su.makeString(" ","TestSuite:",self.title));
+                        self.logger.log(_su.makeString(" ","Total Test:",self.total,"Failed Count:",self.failed,"Passed Count:",self.passed));
+                        LoggerManager.report();
                   });
+
+                  while(it.next());
                }
          };
 
