@@ -38,6 +38,17 @@ var Jaz = (function(globals){
             console.log(asc.fg.red,message,asc.reset);
          }
       },
+      DOMConsole = {
+         display:function(message){
+            //
+         },
+         warn:function(message){
+            //
+         },
+         error:function(message){
+            //
+         }
+      },
       Logger = (function(title,debug){
          var title = title, debug = debug,logs = [];
 
@@ -65,6 +76,10 @@ var Jaz = (function(globals){
                });
 
                while(iterator.next());
+            },
+
+            flush: function(){
+               _su.explode(logs);
             }
          }
 
@@ -78,16 +93,21 @@ var Jaz = (function(globals){
                this.suite.print();
                this.assert.print();
                this.expect.print();
+               TerminalConsole.display(" ");
+
+               //clear
+
+               this.suite.flush();
+               this.assert.flush();
+               this.expect.flush();
             }
          }
       })(),
       Asserts = (function(_scope){
-         this.description = "Expects";
-         if(!_scope) _scope = this;
+         if(!_scope) _scope = {desc : "Asserts"};
 
          var wrapToString = function(code){ return ("'"+code+"'"); },
              generateResponse = function(op,could,should,message,scope){
-
                if(_su.isString(could)) could = wrapToString(could);
                if(_su.isString(should)) should = wrapToString(should);
                if(_su.isDate(could)) could = could.getTime();
@@ -98,11 +118,10 @@ var Jaz = (function(globals){
                if(_su.isUndefined(should)) should = 'Undefined';
 
                var passed = _su.makeString(" ",asc.fg.margenta," - Assertion:",cres(op,asc.fg.cyan,asc.reset),
-                     asc.fg.margenta,"Status:",Passed, asc.fg.margenta,"From:",cres(scope,asc.fg.cyan,asc.reset)),
+                     asc.fg.margenta,"Status:",Passed, asc.fg.margenta,"From:",cres(scope.desc,asc.fg.white,asc.reset)),
                    failed = _su.makeString(" ",asc.fg.margenta," - Assertion:",cres(op,asc.fg.cyan,asc.reset),
-                     asc.fg.margenta,"Status:",Failed,asc.fg.margenta,"From:",cres(scope,asc.fg.cyan,asc.reset)),
-                   body = _su.makeString(" ","   ",asc.fg.green," + Checked:",asc.reset,
-                     cres(_su.makeString(" ","if",could,message,should),asc.fg.cyan,asc.reset));
+                     asc.fg.margenta,"Status:",Failed,asc.fg.margenta,"From:",cres(scope.desc,asc.fg.cyan,asc.reset)),
+                   body = _su.makeString(" ","   ",asc.fg.green," + Checked:",asc.reset,"if",could,message,should);
                   
                   return {
                      pass: _su.makeString("\n",passed,body),
@@ -121,7 +140,7 @@ var Jaz = (function(globals){
          return {
          
             isEqual: function(could,should){
-               var response = generateResponse("isEqual(===)",could,should,"is equal to",_scope.desc);
+               var response = generateResponse("isEqual(===)",could,should,"is equal to",_scope);
 
                if(_su.isType(could) !== _su.isType(should)){ 
                   return responseHandler(false,response);
@@ -144,7 +163,7 @@ var Jaz = (function(globals){
              expectations = {},
              rejections = {},
              expectDetail = function(color,reset,type,i,message){
-               return _su.makeString("",type,i,cres(message,color,reset));
+               return _su.makeString(" ",type,i,cres(message,color,reset));
              };
 
          return{
@@ -152,45 +171,54 @@ var Jaz = (function(globals){
             done: function(){
                _su.forEach(expectations,function(e,i){
                   if(!e){
-                     Console.log(expectDetail(asc.fg.red,asc.reset,cres("+ Expectations:",asc.fg.yellow,asc.reset),i,"is still unfullfilled!"));
+                     Console.log(expectDetail(asc.fg.red,asc.reset,_su.makeString(" ",asc.fg.cyan," + Expectations:",asc.reset),
+                     i,"is still unfullfilled!"));
                      return;
                   }
-                  Console.log(expectDetail(asc.fg.green,asc.reset,cres("+ Expectations:",asc.fg.yellow,asc.reset),i,"is fullfilled!"));
-                  return;
+                     Console.log(expectDetail(asc.fg.green,asc.reset,_su.makeString(" ",asc.fg.cyan," + Expectations:",asc.reset),
+                     i,"is fullfilled!"));
+                     return;
                },this);
                _su.forEach(rejections,function(e,i){
                   if(!e){
-                     Console.log(expectDetail(asc.fg.red,asc.reset,cres("- Rejections:",asc.fg.yellow,asc.reset),i,"is rejected!"));
+                     Console.log(expectDetail(asc.fg.green,asc.reset,cres("- Rejections:",asc.fg.yellow,asc.reset),
+                     i,"is rejected!"));
                      return;
                   }
-                  Console.log(expectDetail(asc.fg.red,asc.reset,cres("- Rejections:",asc.fg.yellow,asc.reset),i,"is still unrejected!"));
-                  return;
+                     Console.log(expectDetail(asc.fg.red,asc.reset,_su.makeString(" ",asc.fg.cyan," + Expectations:",asc.reset),
+                     i,"is still unrejected!"));
+                     return;
                },this);
+
+               _su.explode(expectations,rejections);
 
             },
 
-            fulfil: function(e){
-               if(expectations[e]){
+            fulfill: function(e){
+               if(e in expectations && !expectations[e]){
                   expectations[e] = true;
+                  console.log(expectations);
                }
-               return;
+               return this;
             },
 
             reject: function(e){
-               if(rejections[e]){
+               if(e in rejections && rejections[e]){
                   rejections[e] = false;
                }
-               return;
+               return this;
             },
 
             agreeTo: function(e){
                if(e in expectations) return;
                expectations[e] = false;
+               return this;
             },
 
             refuseTo: function(e){
                if(e in rejections) return;
                rejections[e] = true;
+               return this;
             },
 
         };
@@ -198,58 +226,83 @@ var Jaz = (function(globals){
       }),
 
       Suite = (function(){
-         
-         var SuiteManager = {
-               showDebug: false,
-               logger : LoggerManager.suite,
-               specs : {},
-               before : null,
-               after : null,
-               total : 0,
-               passed : 0,
-               failed : 0,
-               sandbox: {},
-               it : function(desc,fn){
-                  //add the desc as a property of fn 
-                  fn.desc = desc; Array.prototype.push.call(this.specs,fn);
-                  this.total = this.specs.length;
-               },
-               beforeEach : function(fn){
-                   var self = this;
-                   this.before = function(){ return fn.call(self.sandbox); };
-               },
-               afterEach : function(fn){
-                  var self = this;
-                  this.after = function(){ return fn.call(self.sandbox); };
-               },
-               run: function(){
-                  //handle and run all the specs 
+         var sig = "__suites__",
+         SuiteManager  = {
+            lists : [],
+            add: function(o){ 
+               if(!o.signature || o.signature !== sig) return;
+               this.lists.push(o);
+            },
+            run: function(){
+               var self=this,
+               iterator = _su.iterable(self.lists,function(e,i,b){
+                  if(!e.signature || e.signature !== sig) return;
+                  e.run();
 
-                  var self = this,
-                      it = _su.iterable(this.specs,function(e,i,b){
-                         //make a clean scope
-                        try{
-                           //using forceful approach we take on each it and run them 
-                           if(self.before) self.before();
-                           self.sandbox.desc = e.desc;
-                           e.call(self.sandbox);
-                           if(self.after) self.after();
-                           self.passed += 1;
-                        }catch(j){
-                           self.failed += 1;
-                        }
-                  },function(e,i,b){
-                     self.logger.log(_su.makeString(" ",cres("Suite:",asc.fg.margenta,asc.reset),
-                        self.title,cres("Total:",asc.fg.margenta,asc.reset),
-                        self.total,cres("Passed:",asc.fg.margenta,asc.reset),self.passed,
-                        cres("Failed:",asc.fg.red,asc.reset),self.failed));
-                        LoggerManager.report();
-                        self.logger.log(" ");
-                  });
+               },function(e,i,b){
+                  //_su.explode(self.lists);
+               });
 
-                  while(it.next());
-               }
-         };
+               while(iterator.next());
+            }
+
+         },
+
+         Suites = function(){
+
+               return {
+                  signature: sig,
+                  showDebug: false,
+                  logger : LoggerManager.suite,
+                  specs : {},
+                  before : null,
+                  after : null,
+                  total : 0,
+                  passed : 0,
+                  failed : 0,
+                  sandbox: {},
+                  it : function(desc,fn){
+                     //add the desc as a property of fn 
+                     fn.desc = desc; fn.suite = this.title; Array.prototype.push.call(this.specs,fn);
+                     this.total = this.specs.length;
+                  },
+                  beforeEach : function(fn){
+                      var self = this;
+                      this.before = function(){ return fn.call(self.sandbox); };
+                  },
+                  afterEach : function(fn){
+                     var self = this;
+                     this.after = function(){ return fn.call(self.sandbox); };
+                  },
+                  run: function(){
+                     //handle and run all the specs 
+
+                     var self = this,
+                         it = _su.iterable(this.specs,function(e,i,b){
+                            //make a clean scope
+                           try{
+                              //using forceful approach we take on each it and run them 
+                              if(self.before) self.before();
+                              self.sandbox.desc = e.desc;
+                              e.call(self.sandbox);
+                              if(self.after) self.after();
+                              self.passed += 1;
+                           }catch(j){
+                              self.failed += 1;
+                           }
+                     },function(e,i,b){
+                           self.logger.log(_su.makeString(asc.extra.underline,cres("Suite:",asc.fg.margenta,asc.reset),
+                              cres(self.title,asc.fg.yellow,asc.reset),cres("Total:",asc.fg.margenta,asc.reset),
+                              cres(self.total,asc.fg.yellow,asc.reset),cres("Passed:",asc.fg.margenta,asc.reset),cres(self.passed,asc.fg.green,asc.reset),
+                              cres("Failed:",asc.fg.margenta,asc.reset),cres(self.failed,asc.fg.red,asc.reset)));
+                           LoggerManager.report();
+                     });
+
+                     while(it.next());
+                  }
+            };
+
+      };
 
 
 
@@ -264,13 +317,20 @@ var Jaz = (function(globals){
             // });
             //
             //});
-            var current = SuiteManager;
-            current.title = title;
-            //run the func to prepare the suite 
-            func.call(current);
+            SuiteManager.add((function(){
+               var current = Suites();
+               current.title = title;
+               //run the func to prepare the suite 
+               func.call(current);
+               return current;
+            })());
 
-            return current;
-         }
+            //will be remove,only for testsing purposes
+            return this;
+
+         },
+
+         run: _su.proxy(SuiteManager.run,SuiteManager),
       }
    })();
 
@@ -280,7 +340,6 @@ var Jaz = (function(globals){
       expects: Expects,
       asserts: Asserts,
       logger: Logger,
-      logManager: LoggerManager,
       version: "0.1",
       license: "mit",
    };

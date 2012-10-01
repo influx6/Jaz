@@ -25,7 +25,8 @@
 	},
 	
 	"dependencies": {
-	        "stub": ">= 0.3.0"
+	        "stub": ">= 0.3.0",
+           "extensionmgr": ">= 0.1.0"
 	 },
 	
 	"engine":{
