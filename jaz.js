@@ -71,7 +71,6 @@ var Jaz = (function(globals){
                   count += 1;
                },function(e,i,b){
                   if(!debug) return;
-                  //TerminalConsole.display("");
                   TerminalConsole.display(_su.makeString("",cres("Total Log Count:",asc.fg.cyan,asc.reset),count));
                });
 
@@ -90,6 +89,9 @@ var Jaz = (function(globals){
             expect: Logger("Expectations Log Reports:"),
             suite: Logger("Suite Log Reports:"),
             report: function(){
+               // this.assert.log(" ");
+               // this.expect.log(" ");
+
                this.suite.print();
                this.assert.print();
                this.expect.print();
@@ -112,16 +114,12 @@ var Jaz = (function(globals){
                if(_su.isString(should)) should = wrapToString(should);
                if(_su.isDate(could)) could = could.getTime();
                if(_su.isDate(should)) should = should.getTime();
-               if(_su.isNull(could)) could = 'Null';
-               if(_su.isNull(should)) should = 'Null';
-               if(_su.isUndefined(could)) could = 'Undefined';
-               if(_su.isUndefined(should)) should = 'Undefined';
 
-               var passed = _su.makeString(" ",asc.fg.margenta," - Assertion:",cres(op,asc.fg.cyan,asc.reset),
+               var passed = _su.makeString(" ",asc.fg.margenta,"  - Assertion:",cres(op,asc.fg.cyan,asc.reset),
                      asc.fg.margenta,"Status:",Passed, asc.fg.margenta,"From:",cres(scope.desc,asc.fg.white,asc.reset)),
-                   failed = _su.makeString(" ",asc.fg.margenta," - Assertion:",cres(op,asc.fg.cyan,asc.reset),
+                   failed = _su.makeString(" ",asc.fg.margenta,"  - Assertion:",cres(op,asc.fg.cyan,asc.reset),
                      asc.fg.margenta,"Status:",Failed,asc.fg.margenta,"From:",cres(scope.desc,asc.fg.cyan,asc.reset)),
-                   body = _su.makeString(" ","   ",asc.fg.green," + Checked:",asc.reset,"if",could,message,should);
+                   body = _su.makeString(" ","   ",asc.fg.green," + Checked:",asc.reset,"if",could,message,(should ? should : " "));
                   
                   return {
                      pass: _su.makeString("\n",passed,body),
@@ -137,26 +135,39 @@ var Jaz = (function(globals){
 
              };
 
-         return {
-         
-            isEqual: function(could,should){
-               var response = generateResponse("isEqual(===)",could,should,"is equal to",_scope);
+      var matchers = {}; matchers.item = null;
+         matchers.obj = function(item){
+            this.item = item; return this;
+         };
+         matchers.createMatcher = function(name,message,fn){
+               var sandbox = this,scope = _scope,
+                  matcher = function(should){
+                     var res = fn.apply(sandbox,arguments),
+                         response = generateResponse(name,sandbox.item,should,message,scope);
+                     return (res ? responseHandler(true,response) : responseHandler(false,response));
+                  };
+               
+               if(name in this) return false;
+               this[name] = matcher; return true;
+         };
 
-               if(_su.isType(could) !== _su.isType(should)){ 
-                  return responseHandler(false,response);
-               }
-               if(_su.isDate(could) && _su.isDate(should) && could.getTime() !== should.getTime()){ 
-                  return responseHandler(false,response);
-               }
-               if(could !== should){ 
-                  return responseHandler(false,response);
-               }
+         matchers.createMatcher("toBe","is equal to",function(should){
+               if(this.item !== should) return false;
+               return true;
+         });
 
-               return responseHandler(true,response);
-                 
-            },
-         
-         }
+         matchers.createMatcher("toBeNull","is null",function(){
+            _su.explode(arguments);
+            if(_su.isNull(this.item)) return true;
+            return false;
+         });
+
+         matchers.createMatcher("notToBe","is not equal to",function(should){
+            if(this.item !== should) return true;
+            return false;
+         });
+
+         return matchers;
       }),
       Expects = (function(){
          var Console = LoggerManager.expect,
@@ -171,21 +182,21 @@ var Jaz = (function(globals){
             done: function(){
                _su.forEach(expectations,function(e,i){
                   if(!e){
-                     Console.log(expectDetail(asc.fg.red,asc.reset,_su.makeString(" ",asc.fg.cyan," + Expectations:",asc.reset),
+                     Console.log(expectDetail(asc.fg.red,asc.reset,_su.makeString(" ",asc.fg.cyan,"  - Expectation:",asc.reset),
                      i,"is still unfullfilled!"));
                      return;
                   }
-                     Console.log(expectDetail(asc.fg.green,asc.reset,_su.makeString(" ",asc.fg.cyan," + Expectations:",asc.reset),
+                     Console.log(expectDetail(asc.fg.green,asc.reset,_su.makeString(" ",asc.fg.cyan,"  - Expectation:",asc.reset),
                      i,"is fullfilled!"));
                      return;
                },this);
                _su.forEach(rejections,function(e,i){
                   if(!e){
-                     Console.log(expectDetail(asc.fg.green,asc.reset,cres("- Rejections:",asc.fg.yellow,asc.reset),
+                     Console.log(expectDetail(asc.fg.green,asc.reset,_su.makeString(" ",asc.fg.cyan,"  - Rejection:",asc.reset),
                      i,"is rejected!"));
                      return;
                   }
-                     Console.log(expectDetail(asc.fg.red,asc.reset,_su.makeString(" ",asc.fg.cyan," + Expectations:",asc.reset),
+                     Console.log(expectDetail(asc.fg.red,asc.reset,_su.makeString(" ",asc.fg.cyan,"  - Rejection:",asc.reset),
                      i,"is still unrejected!"));
                      return;
                },this);
@@ -197,7 +208,6 @@ var Jaz = (function(globals){
             fulfill: function(e){
                if(e in expectations && !expectations[e]){
                   expectations[e] = true;
-                  console.log(expectations);
                }
                return this;
             },
@@ -313,7 +323,7 @@ var Jaz = (function(globals){
             // variable definitions heres
             //
             // it("should do something", function(){
-            //       expects(this).isEqual(1,1);
+            //       asserts(this).obj(1).toBe(1);
             // });
             //
             //});
@@ -324,9 +334,6 @@ var Jaz = (function(globals){
                func.call(current);
                return current;
             })());
-
-            //will be remove,only for testsing purposes
-            return this;
 
          },
 
@@ -340,6 +347,7 @@ var Jaz = (function(globals){
       expects: Expects,
       asserts: Asserts,
       logger: Logger,
+      logman: LoggerManager,
       version: "0.1",
       license: "mit",
    };
